@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Reputation Checker</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>🛡️ Website Reputation Checker</h1>
+                <p>Enter a website URL to check its trustworthiness</p>
+            </div>
+
+            <div class="input-area">
+                <input type="text" id="urlInput" placeholder="https://example.com" autofocus>
+                <button class="btn btn-check" id="checkBtn">🔍 Check Reputation</button>
+            </div>
+
+            <div class="loader" id="loader" style="display:none">
+                <div class="spinner"></div>
+                <div class="loader-steps">
+                    <div class="step" id="step1">🔍 Resolving DNS...</div>
+                    <div class="step" id="step2">🔐 Checking SSL...</div>
+                    <div class="step" id="step3">📅 Checking WHOIS...</div>
+                    <div class="step" id="step4">🚨 Scanning blacklists...</div>
+                    <div class="step" id="step5">🌐 Checking IP reputation...</div>
+                </div>
+            </div>
+
+            <div class="error" id="error" style="display:none"></div>
+
+            <div class="result" id="result" style="display:none">
+                <div class="result-header" id="resultHeader"></div>
+
+                <table class="report-table">
+                    <tr>
+                        <td class="label">Website</td>
+                        <td class="value" id="rUrl"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Domain</td>
+                        <td class="value" id="rDomain"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">HTTPS</td>
+                        <td class="value" id="rHttps"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">SSL Certificate</td>
+                        <td class="value" id="rSsl"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">DNS</td>
+                        <td class="value" id="rDns"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">IP Address</td>
+                        <td class="value" id="rIp"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Domain Age</td>
+                        <td class="value" id="rAge"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Blacklist</td>
+                        <td class="value" id="rBlacklist"></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Hosting</td>
+                        <td class="value" id="rHosting"></td>
+                    </tr>
+                </table>
+
+                <div class="score-section" id="scoreSection">
+                    <div class="score-circle" id="scoreCircle">
+                        <span class="score-num" id="scoreNum">0</span>
+                        <span class="score-label">/ 100</span>
+                    </div>
+                    <div class="score-verdict" id="scoreVerdict"></div>
+                </div>
+
+                <div class="details" id="details"></div>
+
+                <button class="btn" id="resetBtn">🔄 Check Another</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById("urlInput");
+        const checkBtn = document.getElementById("checkBtn");
+        const loader = document.getElementById("loader");
+        const error = document.getElementById("error");
+        const result = document.getElementById("result");
+
+        const step1 = document.getElementById("step1");
+        const step2 = document.getElementById("step2");
+        const step3 = document.getElementById("step3");
+        const step4 = document.getElementById("step4");
+        const step5 = document.getElementById("step5");
+        const steps = [step1, step2, step3, step4, step5];
+
+        checkBtn.addEventListener("click", checkUrl);
+        urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") checkUrl(); });
+
+        async function checkUrl() {
+            const url = urlInput.value.trim();
+            if (!url) { showError("Please enter a URL"); return; }
+
+            result.style.display = "none";
+            error.style.display = "none";
+            loader.style.display = "block";
+            steps.forEach(s => s.className = "step");
+
+            let stepIdx = 0;
+            const advance = () => {
+                if (stepIdx < steps.length) {
+                    steps[stepIdx].className = "step active";
+                    stepIdx++;
+                }
+            };
+            advance();
+
+            setTimeout(advance, 400);
+            setTimeout(advance, 800);
+            setTimeout(advance, 1200);
+            setTimeout(advance, 1600);
+
+            try {
+                const res = await fetch("/check", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url })
+                });
+                const data = await res.json();
+
+                setTimeout(() => {
+                    loader.style.display = "none";
+                    if (data.error) { showError(data.error); return; }
+                    showResult(data);
+                }, 600);
+            } catch (err) {
+                loader.style.display = "none";
+                showError("Server error. Is the backend running?");
+            }
+        }
+
+        function showResult(data) {
+            result.style.display = "block";
+            const r = data.report;
+            const isHigh = r.level === "high";
+            const isMed = r.level === "medium";
+
+            resultHeader.className = "result-header " + (isHigh ? "verdict-high" : isMed ? "verdict-suspicious" : "verdict-safe");
+            resultHeader.textContent = isHigh ? "🚨 " + r.verdict : isMed ? "⚠️ " + r.verdict : "✅ " + r.verdict;
+
+            document.getElementById("rUrl").textContent = data.url;
+            document.getElementById("rDomain").textContent = data.domain;
+
+            const ssl = data.ssl;
+            if (ssl.valid) {
+                document.getElementById("rHttps").innerHTML = "✅ Yes";
+                document.getElementById("rSsl").innerHTML = "✅ Valid (issuer: " + ssl.issuer + ", expires: " + ssl.expires + ", " + ssl.days_remaining + " days)";
+            } else {
+                document.getElementById("rHttps").innerHTML = "❌ No";
+                document.getElementById("rSsl").innerHTML = "❌ " + (ssl.error || "No SSL certificate");
+            }
+
+            const dns = data.dns;
+            document.getElementById("rDns").innerHTML = dns.success ? "✅ Resolved" : "❌ " + (dns.error || "Failed");
+            document.getElementById("rIp").textContent = dns.success ? dns.ip : "N/A";
+
+            const w = data.whois;
+            if (w.available) {
+                const ageText = w.age_days < 30 ? w.age_days + " days" : w.age_years + " years";
+                document.getElementById("rAge").innerHTML = "📅 " + ageText + " | Registrar: " + w.registrar;
+            } else {
+                document.getElementById("rAge").textContent = "N/A" + (w.error ? " (" + w.error + ")" : "");
+            }
+
+            const bl = data.blacklist;
+            if (bl.threats_found > 0) {
+                document.getElementById("rBlacklist").innerHTML = "⚠️ " + bl.threats.length + " indicator(s)";
+            } else {
+                document.getElementById("rBlacklist").innerHTML = "✅ No threats detected";
+            }
+
+            const rep = data.reputation;
+            document.getElementById("rHosting").textContent = rep.available ? (rep.checks.hosting_provider || "Unknown") : "N/A";
+
+            // Score
+            const scoreCircle = document.getElementById("scoreCircle");
+            const scoreNum = document.getElementById("scoreNum");
+            scoreNum.textContent = r.score;
+            scoreCircle.className = "score-circle " + (isHigh ? "score-high" : isMed ? "score-med" : "score-good");
+
+            const sv = document.getElementById("scoreVerdict");
+            sv.textContent = r.verdict + " (" + r.score + "/" + r.max + ")";
+            sv.className = "score-verdict " + (isHigh ? "verdict-high" : isMed ? "verdict-suspicious" : "verdict-safe");
+
+            // Details
+            let html = "<h3>Detailed Findings</h3><ul>";
+            if (!ssl.valid) html += "<li>❌ No HTTPS or invalid SSL</li>";
+            if (ssl.valid && ssl.expired) html += "<li>❌ SSL certificate is expired</li>";
+            if (!dns.success) html += "<li>❌ DNS lookup failed</li>";
+            if (bl.threats.length) {
+                bl.threats.forEach(t => html += "<li>⚠️ " + t + "</li>");
+            }
+            if (rep.flags && rep.flags.length) {
+                rep.flags.forEach(f => html += "<li>⚠️ " + f + "</li>");
+            }
+            if (ssl.valid && !ssl.expired && dns.success && !bl.threats.length) {
+                html += "<li>✅ No significant risks detected</li>";
+            }
+            html += "</ul>";
+            document.getElementById("details").innerHTML = html;
+        }
+
+        function showError(msg) {
+            error.textContent = msg;
+            error.style.display = "block";
+        }
+
+        document.getElementById("resetBtn").addEventListener("click", () => {
+            result.style.display = "none";
+            error.style.display = "none";
+            urlInput.value = "";
+            urlInput.focus();
+        });
+    </script>
+</body>
+</html>
